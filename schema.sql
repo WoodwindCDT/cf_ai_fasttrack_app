@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS db_notes (
+  id TEXT PRIMARY KEY,
+  vector_chunk TEXT NOT NULL,
+  source TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);

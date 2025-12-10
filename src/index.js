@@ -1,68 +1,156 @@
-import { DurableObject } from "cloudflare:workers";
+export default {
+    async fetch(request, env, ctx) {
+        const url = new URL(request.url);
 
-/**
- * Welcome to Cloudflare Workers! This is your first Durable Objects application.
- *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your Durable Object in action
- * - Run `npm run deploy` to publish your application
- *
- * Learn more at https://developers.cloudflare.com/durable-objects
- */
+        let response;
+        
+        if (url.pathname === '/ingest' && request.method === 'POST') {
+            response = await handleIngestion(request, env);
+        } else if (url.pathname === '/chat' && request.method === 'POST') {
+            response = await handleChat(request, env);
+        } else {
+            const frontendUrl = 'http://127.0.0.1:8788/';
+                
+            response = new Response(null, {
+                status: 302,
+                headers: {
+                    'Location': frontendUrl,
+                },
+            });
+        }
 
-/**
- * Env provides a mechanism to reference bindings declared in wrangler.jsonc within JavaScript
- *
- * @typedef {Object} Env
- * @property {DurableObjectNamespace} MY_DURABLE_OBJECT - The Durable Object namespace binding
- */
+        return withCORS(response);
+    },
+};
 
-/** A Durable Object's behavior is defined in an exported Javascript class */
-export class MyDurableObject extends DurableObject {
-	/**
-	 * The constructor is invoked once upon creation of the Durable Object, i.e. the first call to
-	 * 	`DurableObjectStub::get` for a given identifier (no-op constructors can be omitted)
-	 *
-	 * @param {DurableObjectState} ctx - The interface for interacting with Durable Object state
-	 * @param {Env} env - The interface to reference bindings declared in wrangler.jsonc
-	 */
-	constructor(ctx, env) {
-		super(ctx, env);
-	}
+const corsHeaders = {
+    'Access-Control-Allow-Origin': 'http://127.0.0.1:8788',
+    'Access-Control-Allow-Methods': 'GET, POST',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Max-Age': '86400',
+};
 
-	/**
-	 * The Durable Object exposes an RPC method sayHello which will be invoked when a Durable
-	 *  Object instance receives a request from a Worker via the same method invocation on the stub
-	 *
-	 * @param {string} name - The name provided to a Durable Object instance from a Worker
-	 * @returns {Promise<string>} The greeting to be sent back to the Worker
-	 */
-	async sayHello(name) {
-		return `Hello, ${name}!`;
-	}
+function withCORS(response) {
+    const headers = new Headers(response.headers);
+    for (const [key, value] of Object.entries(corsHeaders)) {
+        headers.set(key, value);
+    }
+    return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: headers,
+    });
 }
 
-export default {
-	/**
-	 * This is the standard fetch handler for a Cloudflare Worker
-	 *
-	 * @param {Request} request - The request submitted to the Worker from the client
-	 * @param {Env} env - The interface to reference bindings declared in wrangler.jsonc
-	 * @param {ExecutionContext} ctx - The execution context of the Worker
-	 * @returns {Promise<Response>} The response to be sent back to the client
-	 */
-	async fetch(request, env, ctx) {
-		// Create a stub to open a communication channel with the Durable Object
-		// instance named "foo".
-		//
-		// Requests from all Workers to the Durable Object instance named "foo"
-		// will go to a single remote Durable Object instance.
-		const stub = env.MY_DURABLE_OBJECT.getByName("foo");
+function simpleChunker(text, maxLen = 500) {
+    const sentences = text.split(/[.!?]\s+/);
+    let chunks = [];
+    let currentChunk = "";
 
-		// Call the `sayHello()` RPC method on the stub to invoke the method on
-		// the remote Durable Object instance.
-		const greeting = await stub.sayHello("world");
+    // Attempting to extract sentences into chunks here
+    for (const sentence of sentences) {
+        if ((currentChunk + sentence).length > maxLen && currentChunk.length > 0) {
+            chunks.push(currentChunk.trim());
+            currentChunk = sentence + ". ";
+        } else {
+            currentChunk += sentence + ". ";
+        }
+    }
 
-		return new Response(greeting);
-	},
-};
+    if (currentChunk.length > 0) {
+        chunks.push(currentChunk.trim());
+    }
+
+    return chunks;
+}
+
+async function handleIngestion(request, env) {
+
+    try {
+        const { text, source = "manual_entry" } = await request.json();
+
+        if (!text) {
+            return new Response('Missing "text" field.', { status: 400 });
+        }
+
+        const chunks = simpleChunker(text);
+
+        const embeddingModel = "@cf/baai/bge-small-en-v1.5";
+
+        const embeddingsResult = await env.AI.run(embeddingModel, { text: chunks });
+        const embeddings = embeddingsResult.data;
+
+        const vectorizeData = [];
+        const d1Statements = [];
+
+        for (let i = 0; i < chunks.length; i++) {
+            const id = crypto.randomUUID();
+            
+            d1Statements.push(
+                env.DB.prepare("INSERT INTO db_notes (id, vector_chunk, source) VALUES (?, ?, ?)").bind(id, chunks[i], source)
+            );
+            
+            vectorizeData.push({ id: id, values: embeddings[i] });
+        }
+
+        await env.DB.batch(d1Statements);
+        await env.VECTORIZE.insert(vectorizeData);
+        
+        return new Response(`Successfully ingested ${chunks.length} chunks.`, { status: 200 });
+
+    } catch (e) {
+
+        return new Response(`Ingestion error: ${e.message}`, { status: 500 });
+
+    }
+}
+
+async function handleChat(request, env) {
+
+    try {
+        const { query } = await request.json();
+
+        if (!query) {
+            return new Response('Missing "query" field.', { status: 400 });
+        }
+
+        const embeddingModel = "@cf/baai/bge-small-en-v1.5";
+        const queryEmbedding = await env.AI.run(embeddingModel, { text: [query] });
+
+        const searchResults = await env.VECTORIZE.query(
+            queryEmbedding.data[0],
+            { topK: 5 }
+        );
+
+        const idsToFetch = searchResults.matches.map(m => m.id);
+
+        if (idsToFetch.length === 0) {
+            return new Response("Couldn't find relevant notes to answer your question :(", { status: 200 });
+        }
+
+        const placeholders = idsToFetch.map(() => '?').join(',');
+
+        const { results } = await env.DB.prepare(
+            `SELECT vector_chunk FROM db_notes WHERE id IN (${placeholders})`
+        ).bind(...idsToFetch).all();
+
+        const context = results.map(r => r.vector_chunk).join('\n---\n');
+
+        const llmModel = "@cf/meta/llama-3-8b-instruct";
+        
+        const systemPrompt = "You are a friendly, concise, and helpful assistant. Use ONLY the provided CONTEXT to answer the USER QUESTION. If the context does not contain the answer, politely state that the information is not available in your notes.";
+
+        const ragPrompt = `${systemPrompt}\n\nCONTEXT:\n${context}\n\nUSER QUESTION: ${query}`;
+
+        const llmResponse = await env.AI.run(llmModel, { prompt: ragPrompt });
+
+        return new Response(llmResponse.response, { 
+            status: 200, 
+            headers: { 'Content-Type': 'text/plain' } 
+        });
+
+    } catch (e) {
+        console.error(e);
+        return new Response(`Chat error: ${e.message}`, { status: 500 });
+    }
+}

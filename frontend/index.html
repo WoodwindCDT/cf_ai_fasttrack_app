@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notes RAG - Cristian Turbeville</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+
+        <h1>Notes RAG</h1>
+        <p>Ask a question based on the notes you've ingested.</p>
+
+        <div id="ingest-section">
+            <h2>Enter Your Notes</h2>
+            <textarea id="ingest-text" placeholder="Enter your notes here! You may enter many at a time."></textarea>
+            <button onclick="handleIngest()">Ingest Data</button>
+            <p id="ingest-status"></p>
+        </div>
+        
+        <hr>
+
+        <div id="chat-section">
+            <h2>Ask a Question</h2>
+            <div id="chat-log">
+                </div>
+            <div id="input-container">
+                <input type="text" id="user-input" placeholder="What were the action items from the meeting on Wednesday?">
+                <button id="send-button" onclick="handleChat()">Send</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+    
+</body>
+</html>
