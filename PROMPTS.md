@@ -1,0 +1,7 @@
+- Please generate some CSS for the following [HTML](https://github.com/WoodwindCDT/cf_ai_fasttrack_app/blob/main/frontend/index.html).
+  - Resulting file: [style.css](https://github.com/WoodwindCDT/cf_ai_fasttrack_app/blob/main/frontend/style.css)
+- npx wrangler command for creating d1 DB, applying schema, and creating cloudflare vector db (lightweight).
+  - Results: 
+    - npx wrangler d1 create "db name"
+    - npx wrangler d1 execute "db name" --remote --file=./schema.sql
+    - npx wrangler vectorize create "index name" --dimensions 384 --metric cosine

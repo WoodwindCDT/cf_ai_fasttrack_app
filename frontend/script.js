@@ -1,4 +1,4 @@
-const WORKER_API_URL = "http://127.0.0.1:8787";
+const WORKER_API_URL = "https://cfai.cris1.com";
 
 const chatLog = document.getElementById('chat-log');
 const userInput = document.getElementById('user-input');

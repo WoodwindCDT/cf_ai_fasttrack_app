@@ -1,6 +1,10 @@
+const PRODUCTION_FRONTEND_URL = 'https://cfai.cris1.com';
+
 export default {
+
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
+        
 
         let response;
         
@@ -9,32 +13,34 @@ export default {
         } else if (url.pathname === '/chat' && request.method === 'POST') {
             response = await handleChat(request, env);
         } else {
-            const frontendUrl = 'http://127.0.0.1:8788/';
-                
             response = new Response(null, {
                 status: 302,
                 headers: {
-                    'Location': frontendUrl,
+                    'Location': PRODUCTION_FRONTEND_URL,
                 },
             });
         }
 
-        return withCORS(response);
-    },
+        return withCORS(env, response);
+    }
+
 };
 
 const corsHeaders = {
-    'Access-Control-Allow-Origin': 'http://127.0.0.1:8788',
+    'Access-Control-Allow-Origin': PRODUCTION_FRONTEND_URL,
     'Access-Control-Allow-Methods': 'GET, POST',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Max-Age': '86400',
+    'Access-Control-Max-Age': '86400'
 };
 
-function withCORS(response) {
+function withCORS(env, response) {
+
     const headers = new Headers(response.headers);
+
     for (const [key, value] of Object.entries(corsHeaders)) {
         headers.set(key, value);
     }
+
     return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
@@ -43,6 +49,7 @@ function withCORS(response) {
 }
 
 function simpleChunker(text, maxLen = 500) {
+
     const sentences = text.split(/[.!?]\s+/);
     let chunks = [];
     let currentChunk = "";
