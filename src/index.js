@@ -4,8 +4,11 @@ export default {
 
     async fetch(request, env, ctx) {
         const url = new URL(request.url);
-        
 
+        if (request.method === 'OPTIONS') {
+            return handleOptions();
+        }
+        
         let response;
         
         if (url.pathname === '/ingest' && request.method === 'POST') {
@@ -13,12 +16,7 @@ export default {
         } else if (url.pathname === '/chat' && request.method === 'POST') {
             response = await handleChat(request, env);
         } else {
-            response = new Response(null, {
-                status: 302,
-                headers: {
-                    'Location': PRODUCTION_FRONTEND_URL,
-                },
-            });
+           return env.ASSETS.fetch(request);
         }
 
         return withCORS(env, response);
@@ -28,10 +26,17 @@ export default {
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': PRODUCTION_FRONTEND_URL,
-    'Access-Control-Allow-Methods': 'GET, POST',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type',
-    'Access-Control-Max-Age': '86400'
+    'Access-Control-Max-Age': '86400',
 };
+
+function handleOptions() {
+    return new Response(null, {
+        status: 204,
+        headers: corsHeaders,
+    });
+}
 
 function withCORS(env, response) {
 

@@ -3,6 +3,9 @@
 	"name": "cf-ai-rag-notes",
 	"main": "src/index.js",
 	"compatibility_date": "2025-12-09",
+	"assets": {
+		"directory": "frontend"
+	},
 	"ai": {
 		"binding": "AI",
 		"remote": true
